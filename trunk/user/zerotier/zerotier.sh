@@ -10,6 +10,7 @@ start_instance() {
 	echo $cfg
 	port=""
 	args=""
+	networkid="$(nvram get zerotier_id)"
 	moonid="$(nvram get zerotier_moonid)"
 	secret="$(nvram get zerotier_secret)"
 	enablemoonserv="$(nvram get zerotiermoon_enable)"
@@ -38,15 +39,45 @@ start_instance() {
 		#rm -f $config_path/identity.public
 	fi
 
-	add_join $(nvram get zerotier_id)
+	if [ -n "$planet"]; then
+		logger -t "zerotier" "找到planet,正在写入文件,请稍后..."
+		echo "$planet" >$config_path/planet.tmp
+		base64 -d $config_path/planet.tmp >$config_path/planet
+	fi
+
+	if [ -f "$PLANET" ]; then
+		if [ ! -s "$PLANET" ]; then
+			logger -t "zerotier" "自定义planet文件为空,删除..."
+			rm -f $config_path/planet
+			rm -f $PLANET
+			nvram set zerotier_planet=""
+			nvram commit
+		else
+			logger -t "zerotier" "自定义planet文件不为空,创建..."
+			planet="$(base64 $PLANET)"
+			cp -f $PLANET $config_path/planet
+			rm -f $PLANET
+			nvram set zerotier_planet="$planet"
+			nvram commit
+		fi
+	fi
+
+
+	if [ -n "$networkid" ]; then
+		for id in ${networkid//,/ }; do
+			add_join $id
+		done
+	fi
 
 	$PROG $args $config_path >/dev/null 2>&1 &
 		
 	rules
 	
 	if [ -n "$moonid" ]; then
-		$PROGCLI -D$config_path orbit $moonid $moonid
-		logger -t "zerotier" "orbit moonid $moonid ok!"
+		for id in ${moonid//,/ }; do
+			$PROGCLI -D$config_path orbit $id $id
+			logger -t "zerotier" "orbit moonid $id ok!"
+		done
 	fi
 
 
